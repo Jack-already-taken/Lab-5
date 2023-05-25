@@ -86,6 +86,11 @@
 #include "gpio.h"
 #include "uart.h"
 
+#include "Adafruit_SSD1351.h"
+#include "Adafruit_GFX.h"
+#include "glcdfont.h"
+#include "spi.h"
+
 #define MAX_URI_SIZE 128
 #define URI_SIZE MAX_URI_SIZE + 1
 
@@ -101,6 +106,18 @@
 #define B9      0b00000010111111011001000001101111
 #define MUTE    0b00000010111111010000100011110111
 #define LAST    0b00000010111111010000001011111101
+
+// Definition of Colors for OLED
+#define BLACK           0x0000
+#define BLUE            0x001F
+#define GREEN           0x07E0
+#define CYAN            0x07FF
+#define RED             0xF800
+#define MAGENTA         0xF81F
+#define YELLOW          0xFFE0
+#define WHITE           0xFFFF
+
+int colorset[5] = {WHITE, BLUE, GREEN, CYAN, RED};
 
 #define APPLICATION_NAME        "SSL"
 #define APPLICATION_VERSION     "1.1.1.EEC.Spring2023"
@@ -228,7 +245,21 @@ typedef struct PinSetting {
     unsigned int pin;
 } PinSetting;
 
-static PinSetting button = { .port = GPIOA2_BASE, .pin = 0x2};
+static PinSetting button = { .port = GPIOA0_BASE, .pin = 0x80};
+
+// Orgnaization for Keeping Track of Each Letters Information
+typedef struct CLetter{
+    unsigned int x;
+    unsigned int y;
+    char l;
+    int c;
+} CLetter;
+
+CLetter cbuffer[64];
+int cBufIndex = -1;
+int cx = 0;
+int cy = 70;
+int OLEDColor = WHITE;
 //****************************************************************************
 //                      LOCAL FUNCTION PROTOTYPES
 //****************************************************************************
@@ -244,7 +275,301 @@ static int http_post(int);
 // SimpleLink Asynchronous Event Handlers -- Start
 //*****************************************************************************
 
-// Displays Message According to the Button Pressed
+// Depicts the Color of the Text
+//      Changes OLED Color for Next Character (Used for Composing)
+void DisplayColor(void)
+{
+
+    if(color == 5)
+        color = 1;
+    else
+        color++;
+
+    switch(color)
+    {
+        case 1:
+            Report("Color is now: WHITE \n\r");
+            setTextColor(WHITE, BLACK);
+            OLEDColor = WHITE;
+            break;
+        case 2:
+            Report("Color is now: BLUE \n\r");
+            setTextColor(BLUE, BLACK);
+            OLEDColor = BLUE;
+            break;
+        case 3:
+            Report("Color is now: GREEN \n\r");
+            setTextColor(GREEN, BLACK);
+            OLEDColor = GREEN;
+            break;
+        case 4:
+            Report("Color is now: CYAN \n\r");
+            setTextColor(CYAN, BLACK);
+            OLEDColor = CYAN;
+            break;
+        case 5:
+            Report("Color is now: RED \n\r");
+            setTextColor(RED, BLACK);
+            OLEDColor = RED;
+            break;
+        default:
+            break;
+    }
+}
+
+// Sets First Character for Specified Button
+char firstLetter(unsigned long value)
+{
+    char letter;
+    switch(value)
+    {
+        case B0:
+            letter = ' ';
+            Report("letter: %c \n\r", letter);
+            break;
+        case B1:
+            letter = '*';
+            DisplayColor();
+            break;
+        case B2:
+            letter = 'a';
+            Outstr("a");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B3:
+            letter = 'd';
+            Outstr("d");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B4:
+            letter = 'g';
+            Outstr("g");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B5:
+            letter = 'j';
+            Outstr("j");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B6:
+            letter = 'm';
+            Outstr("m");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B7:
+            letter = 'p';
+            Outstr("p");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B8:
+            letter = 't';
+            Outstr("t");
+            Report("letter: %c \n\r", letter);
+            break;
+        case B9:
+            letter = 'w';
+            Outstr("w");
+            Report("letter: %c \n\r", letter);
+            break;
+        case MUTE:
+            letter = '-';
+            Report("letter: %c \n\r", letter);
+            break;
+        case LAST:
+            letter = '+';
+            Report("letter: %c \n\r", letter);
+            break;
+        default:
+            Report("error not valid. \n\r", letter);
+            break;
+    }
+    return letter;
+}
+
+// Consecutive Button Presses
+//      Changes Character Accordingly
+char DisplayNextLetter(char l)
+{
+    char letter;
+    switch(l)
+    {
+        case ' ':
+            letter = ' ';
+            Report("letter: %c \n\r", letter);
+            break;
+        case '*':
+            letter = '*';
+            DisplayColor();
+            break;
+        case 'a':
+            letter = 'b';
+            Outstr("b");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'b':
+            letter = 'c';
+            Outstr("c");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'c':
+            letter = 'a';
+            Outstr("a");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'd':
+            letter = 'e';
+            Outstr("e");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'e':
+            letter = 'f';
+            Outstr("f");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'f':
+            letter = 'd';
+            Outstr("d");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'g':
+            letter = 'h';
+            Outstr("h");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'h':
+            letter = 'i';
+            Outstr("i");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'i':
+            letter = 'g';
+            Outstr("j");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'j':
+            letter = 'k';
+            Outstr("k");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'k':
+            letter = 'l';
+            Outstr("l");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'l':
+            letter = 'j';
+            Outstr("j");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'm':
+            letter = 'n';
+            Outstr("n");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'n':
+            letter = 'o';
+            Outstr("o");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'o':
+            letter = 'm';
+            Outstr("m");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'p':
+            letter = 'q';
+            Outstr("q");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'q':
+            letter = 'r';
+            Outstr("r");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'r':
+            letter = 's';
+            Outstr("s");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 's':
+            letter = 'p';
+            Outstr("t");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 't':
+            letter = 'u';
+            Outstr("u");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'u':
+            letter = 'v';
+            Outstr("v");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'v':
+            letter = 't';
+            Outstr("t");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'w':
+            letter = 'x';
+            Outstr("x");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'x':
+            letter = 'y';
+            Outstr("y");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'y':
+            letter = 'z';
+            Outstr("z");
+            Report("letter: %c \n\r", letter);
+            break;
+        case 'z':
+            letter = 'w';
+            Outstr("w");
+            Report("letter: %c \n\r", letter);
+            break;
+        case '-':
+            letter = '-';
+            Report("letter: %c \n\r", letter);
+            break;
+        case '+':
+            letter = '+';
+            Report("letter: %c \n\r", letter);
+            break;
+        default:
+            Report("error\n\r");
+            break;
+    }
+    return letter;
+}
+
+/**
+ * Reset SysTick Counter
+ */
+static inline void SysTickReset(void) {
+    // any write to the ST_CURRENT register clears it
+    // after clearing it automatically gets reset without
+    // triggering exception logic
+    // see reference manual section 3.2.1
+    HWREG(NVIC_ST_CURRENT) = 1;
+
+    // clear the global count variable
+    systick_cnt = 0;
+}
+
+/**
+ * SysTick Interrupt Handler
+ *
+ * Keep track of whether the systick counter wrapped
+ */
+static void SysTickHandler(void) {
+    // increment every time the systick handler fires
+    systick_cnt++;
+}
+
 void DisplayButtonPressed(unsigned long value)
 {
     switch(value)
@@ -286,257 +611,9 @@ void DisplayButtonPressed(unsigned long value)
             Report("Mute was pressed. \n\r");
             break;
         default:
+            Report("Error. Data = %d\n\r", data);
             break;
     }
-}
-
-// Depicts the Color of the Text
-void DisplayColor(void)
-{
-
-    if(color == 5)
-        color = 1;
-    else
-        color++;
-
-    switch(color)
-    {
-        case 1:
-            Report("Color is now: WHITE \n\r");
-            break;
-        case 2:
-            Report("Color is now: BLUE \n\r");
-            break;
-        case 3:
-            Report("Color is now: GREEN \n\r");
-            break;
-        case 4:
-            Report("Color is now: CYAN \n\r");
-            break;
-        case 5:
-            Report("Color is now: RED \n\r");
-            break;
-        default:
-            break;
-    }
-}
-
-// Standard Letter of Each Button
-char firstLetter(unsigned long value)
-{
-    char letter;
-    switch(value)
-    {
-        case B0:
-            letter = ' ';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B1:
-            letter = '*';
-            DisplayColor();
-            break;
-        case B2:
-            letter = 'a';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B3:
-            letter = 'd';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B4:
-            letter = 'g';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B5:
-            letter = 'j';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B6:
-            letter = 'm';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B7:
-            letter = 'p';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B8:
-            letter = 't';
-            Report("letter: %c \n\r", letter);
-            break;
-        case B9:
-            letter = 'w';
-            Report("letter: %c \n\r", letter);
-            break;
-        case MUTE:
-            letter = '-';
-            Report("letter: %c \n\r", letter);
-            break;
-        case LAST:
-            letter = '+';
-            Report("letter: %c \n\r", letter);
-            break;
-        default:
-            Report("error not valid. \n\r", letter);
-            break;
-    }
-    return letter;
-}
-
-// Helps the Button Presses Iterate
-char DisplayNextLetter(char l)
-{
-    char letter;
-    switch(l)
-    {
-        case ' ':
-            letter = ' ';
-            Report("letter: %c \n\r", letter);
-            break;
-        case '*':
-            letter = '*';
-            DisplayColor();
-            break;
-        case 'a':
-            letter = 'b';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'b':
-            letter = 'c';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'c':
-            letter = 'a';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'd':
-            letter = 'e';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'e':
-            letter = 'f';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'f':
-            letter = 'd';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'g':
-            letter = 'h';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'h':
-            letter = 'i';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'i':
-            letter = 'g';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'j':
-            letter = 'k';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'k':
-            letter = 'l';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'l':
-            letter = 'j';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'm':
-            letter = 'n';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'n':
-            letter = 'o';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'o':
-            letter = 'm';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'p':
-            letter = 'q';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'q':
-            letter = 'r';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'r':
-            letter = 's';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 's':
-            letter = 'p';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 't':
-            letter = 'u';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'u':
-            letter = 'v';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'v':
-            letter = 't';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'w':
-            letter = 'x';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'x':
-            letter = 'y';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'y':
-            letter = 'z';
-            Report("letter: %c \n\r", letter);
-            break;
-        case 'z':
-            letter = 'w';
-            Report("letter: %c \n\r", letter);
-            break;
-        case '-':
-            letter = '-';
-            Report("letter: %c \n\r", letter);
-            break;
-        case '+':
-            letter = '+';
-            Report("letter: %c \n\r", letter);
-            break;
-        default:
-            Report("error\n\r");
-            break;
-    }
-    return letter;
-}
-
-/**
- * Reset SysTick Counter
- */
-static inline void SysTickReset(void) {
-    // any write to the ST_CURRENT register clears it
-    // after clearing it automatically gets reset without
-    // triggering exception logic
-    // see reference manual section 3.2.1
-    HWREG(NVIC_ST_CURRENT) = 1;
-
-    // clear the global count variable
-    systick_cnt = 0;
-}
-
-/**
- * SysTick Interrupt Handler
- *
- * Keep track of whether the systick counter wrapped
- */
-static void SysTickHandler(void) {
-    // increment every time the systick handler fires
-    systick_cnt++;
 }
 
 //*****************************************************************************
@@ -1281,6 +1358,56 @@ void updateEmailMessage() {
     strcat(emailMessage, buffer);
     strcat(emailMessage, DATA_END);
 }
+
+static void SPI_Communication(void){
+
+    //
+    // Enable the SPI module clock
+    //
+    MAP_PRCMPeripheralClkEnable(PRCM_GSPI,PRCM_RUN_MODE_CLK);
+    //
+    // Reset SPI
+    //
+    MAP_SPIReset(GSPI_BASE);
+
+    //
+    // Configure SPI interface
+    //
+    MAP_SPIConfigSetExpClk(GSPI_BASE,MAP_PRCMPeripheralClockGet(PRCM_GSPI),
+                     SPI_IF_BIT_RATE,SPI_MODE_MASTER,SPI_SUB_MODE_0,
+                     (SPI_SW_CTRL_CS |
+                     SPI_4PIN_MODE |
+                     SPI_TURBO_OFF |
+                     SPI_CS_ACTIVEHIGH |
+                     SPI_WL_8));
+
+    //
+    // Enable SPI for communication
+    //
+    MAP_SPIEnable(GSPI_BASE);
+
+    // Enables OLED and Adafruit
+    Adafruit_Init();
+}
+
+// Clears Last Character on OLED (Composing)
+void clearLastChar(void)
+{
+    drawChar(cbuffer[cBufIndex].x, cbuffer[cBufIndex].y, cbuffer[cBufIndex].l, BLACK, BLACK, 1);
+}
+
+// Clears Composing Message on OLED
+void clearMessage(void)
+{
+    int i;
+    for(i = 64; i < 128; i++)
+    {
+        drawFastHLine(0, i, 128, BLACK);
+    }
+    cBufIndex = -1;
+    cx = 0;
+    cy = 70;
+}
 //*****************************************************************************
 //
 //! Main 
@@ -1304,6 +1431,7 @@ void main() {
     InitTerm();
     ClearTerm();
 
+    SPI_Communication();
     //
     // Register the interrupt handlers
     //
@@ -1328,6 +1456,7 @@ void main() {
     // Enable SW2 and SW3 interrupts
     MAP_GPIOIntEnable(button.port, button.pin);
 
+    fillScreen(BLACK);
     prevData = 1;
     currButton = -2;
     prevButton = -1;
@@ -1348,14 +1477,22 @@ void main() {
     if(lRetVal < 0) {
         ERR_PRINT(lRetVal);
     }
+
     while (1) {
         while(SW_intflag == 0){;}
             DisplayButtonPressed(data);
             prevData = data;
+            setCursor(cx, cy);
             letter = firstLetter(prevData);
             SW_intflag = 0;
 
             if (prevData != B0 && prevData != B1 && prevData != MUTE && prevData != LAST) {
+                cbuffer[++cBufIndex].l = letter;
+                cbuffer[cBufIndex].x = cx;
+                cbuffer[cBufIndex].y = cy;
+                cbuffer[cBufIndex].c = color;
+                cx += 6;
+
                 uint64_t timeInterval = 0;
                 while (timeInterval++ < 3500000) {
                     if (SW_intflag) {
@@ -1371,7 +1508,11 @@ void main() {
                         // Displays Letter
                         if(sameButton)
                         {
+                            clearLastChar();
+                            setCursor(cbuffer[cBufIndex].x, cbuffer[cBufIndex].y);
                             letter = DisplayNextLetter(letter);
+                            cbuffer[cBufIndex].l = letter;
+
                             timeInterval = 0;
                         }
                         else
@@ -1388,6 +1529,13 @@ void main() {
             if(letter != '*')
                 Report("letter %c selected \n\r", letter);
 
+            if (letter == ' ') {
+                cbuffer[++cBufIndex].l = letter;
+                cbuffer[cBufIndex].x = cx;
+                cbuffer[cBufIndex].y = cy;
+                cbuffer[cBufIndex].c = color;
+                cx += 6;
+            }
             // Prints full String
             if (letter == '+') {
 
@@ -1400,10 +1548,14 @@ void main() {
                 for (i = 0; i < 64; i++) {
                     buffer[i] = '\0';
                 }
-
+                clearMessage();
             } // Deletes Last Letter
             else if (letter == '-') {
                 if (bufIndex > 0) {
+                    clearLastChar();
+                    cx -= 6;
+                    setCursor(cx, cy);
+                    cBufIndex -= 1;
                     buffer[--bufIndex] = '\0';
                 }
             } // Sets New Letter
